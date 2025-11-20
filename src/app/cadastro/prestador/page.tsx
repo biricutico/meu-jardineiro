@@ -219,7 +219,7 @@ export default function CadastroPrestadorPage() {
         cities: formData.serviceCities.split(',').map(c => c.trim()).filter(c => c)
       };
 
-      // Criar perfil na tabela profiles
+      // Criar perfil na tabela profiles COM EMAIL
       const { error: profileError } = await supabase
         .from('profiles')
         .insert([
@@ -227,6 +227,7 @@ export default function CadastroPrestadorPage() {
             user_id: authData.user.id,
             type: 'prestador',
             name: formData.name.trim(),
+            email: formData.email.toLowerCase(),
             cpf_cnpj: cleanCPF,
             phone: cleanPhone,
             address: '',

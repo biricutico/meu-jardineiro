@@ -27,18 +27,33 @@ export default function ClientePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const id = localStorage.getItem('userId');
-    const name = localStorage.getItem('userName');
-    const type = localStorage.getItem('userType');
+    const checkAuth = async () => {
+      // Verificar sessão do Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/auth/login?type=cliente');
+        return;
+      }
 
-    if (!id || type !== 'cliente') {
-      router.push('/cadastro/cliente');
-      return;
-    }
+      // Buscar perfil do usuário
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
 
-    setUserId(id);
-    setUserName(name || '');
-    loadOrders(id);
+      if (!profile || profile.type !== 'cliente') {
+        router.push('/auth/login?type=cliente');
+        return;
+      }
+
+      setUserId(profile.id);
+      setUserName(profile.name);
+      loadOrders(profile.id);
+    };
+
+    checkAuth();
   }, [router]);
 
   const loadOrders = async (clienteId: string) => {

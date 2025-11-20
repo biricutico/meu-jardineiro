@@ -10,6 +10,7 @@ export default function CriarOrdemPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [formData, setFormData] = useState({
     type: '',
     description: '',
@@ -20,16 +21,38 @@ export default function CriarOrdemPage() {
   });
 
   useEffect(() => {
-    const id = localStorage.getItem('userId');
-    const type = localStorage.getItem('userType');
-    
-    if (!id || type !== 'cliente') {
-      alert('Você precisa estar logado como cliente para criar uma ordem de serviço');
-      router.push('/cadastro/cliente');
-      return;
-    }
-    
-    setUserId(id);
+    const checkAuth = async () => {
+      try {
+        // Verificar sessão do Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          router.push('/auth/login?type=cliente');
+          return;
+        }
+
+        // Buscar perfil do usuário
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (error || !profile || profile.type !== 'cliente') {
+          router.push('/auth/login?type=cliente');
+          return;
+        }
+
+        setUserId(profile.id);
+      } catch (error) {
+        console.error('Erro ao verificar autenticação:', error);
+        router.push('/auth/login?type=cliente');
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
   }, [router]);
 
   const serviceTypes = [
@@ -82,12 +105,16 @@ export default function CriarOrdemPage() {
     }
   };
 
-  if (!userId) {
+  if (checkingAuth) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-gray-600">Carregando...</p>
       </div>
     );
+  }
+
+  if (!userId) {
+    return null;
   }
 
   return (

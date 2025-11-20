@@ -3,16 +3,15 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { User, Briefcase, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { User, Briefcase, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { validateCPF, formatCPF } from '@/lib/utils';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const userType = searchParams.get('type') as 'cliente' | 'prestador' || 'cliente';
 
-  const [cpf, setCpf] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,44 +22,78 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Validar CPF
-      const cleanCPF = cpf.replace(/\D/g, '');
-      if (!validateCPF(cleanCPF)) {
-        setError('CPF inválido');
+      // Fazer login diretamente com email e senha
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password: password,
+      });
+
+      if (authError) {
+        console.error('Erro de autenticação:', authError);
+        
+        // Mensagens de erro mais específicas (SEM verificação de email confirmado)
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('Email ou senha incorretos. Verifique suas credenciais e tente novamente.');
+        } else if (authError.message.includes('User not found')) {
+          setError('Usuário não encontrado. Verifique se você já criou uma conta.');
+        } else {
+          setError(`Erro ao fazer login: ${authError.message}`);
+        }
+        
         setLoading(false);
         return;
       }
 
-      // Buscar usuário no banco
-      const { data: users, error: dbError } = await supabase
-        .from('users')
+      if (!authData.user) {
+        setError('Erro ao autenticar usuário');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Usuário autenticado:', authData.user.id);
+
+      // Buscar perfil do usuário para verificar o tipo
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
         .select('*')
-        .eq('cpf', cleanCPF)
-        .eq('type', userType)
-        .single();
+        .eq('user_id', authData.user.id)
+        .maybeSingle();
 
-      if (dbError || !users) {
-        setError('CPF ou senha incorretos');
+      if (profileError) {
+        console.error('Erro ao buscar perfil:', profileError);
+        setError('Erro ao buscar perfil. Entre em contato com o suporte.');
         setLoading(false);
         return;
       }
 
-      // Verificar senha (em produção, use bcrypt)
-      // Por enquanto, comparação simples para desenvolvimento
-      if (users.password_hash !== password) {
-        setError('CPF ou senha incorretos');
+      if (!profile) {
+        console.error('Perfil não encontrado para user_id:', authData.user.id);
+        setError('Perfil não encontrado. Entre em contato com o suporte.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Perfil encontrado:', profile);
+
+      // Verificar se o tipo de usuário corresponde
+      if (profile.type !== userType) {
+        setError(`Esta conta não é do tipo ${userType}. Tente fazer login na área correta.`);
         setLoading(false);
         return;
       }
 
       // Salvar sessão no localStorage
       localStorage.setItem('user', JSON.stringify({
-        id: users.id,
-        type: users.type,
-        name: users.name,
-        email: users.email,
-        cpf: users.cpf
+        id: profile.id,
+        user_id: profile.user_id,
+        type: profile.type,
+        name: profile.name,
+        email: profile.email,
+        cpf: profile.cpf_cnpj,
+        phone: profile.phone
       }));
+
+      console.log('Login bem-sucedido, redirecionando...');
 
       // Redirecionar para área correspondente
       if (userType === 'cliente') {
@@ -70,15 +103,10 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError('Erro ao fazer login. Tente novamente.');
-      console.error(err);
+      console.error('Erro no login:', err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatCPF(e.target.value);
-    setCpf(formatted);
   };
 
   return (
@@ -108,21 +136,23 @@ export default function LoginPage() {
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <form onSubmit={handleLogin} className="space-y-6">
-            {/* CPF */}
+            {/* Email */}
             <div>
-              <label htmlFor="cpf" className="block text-sm font-medium text-gray-700 mb-2">
-                CPF
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email
               </label>
-              <input
-                type="text"
-                id="cpf"
-                value={cpf}
-                onChange={handleCPFChange}
-                placeholder="000.000.000-00"
-                maxLength={14}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                required
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  required
+                />
+              </div>
             </div>
 
             {/* Senha */}
@@ -142,6 +172,16 @@ export default function LoginPage() {
                   required
                 />
               </div>
+            </div>
+
+            {/* Esqueci minha senha */}
+            <div className="text-right">
+              <Link
+                href={`/auth/recuperar-senha?type=${userType}`}
+                className="text-sm text-green-600 hover:text-green-700 font-medium"
+              >
+                Esqueci minha senha
+              </Link>
             </div>
 
             {/* Error Message */}
@@ -176,7 +216,7 @@ export default function LoginPage() {
             <div className="text-center pt-4 border-t border-gray-200">
               <p className="text-gray-600 mb-3">Ainda não tem uma conta?</p>
               <Link
-                href={`/cadastro/${userType}`}
+                href={userType === 'cliente' ? '/cadastro/cliente' : '/cadastro/prestador'}
                 className={`inline-block px-6 py-2 rounded-lg font-medium transition-colors ${
                   userType === 'cliente'
                     ? 'bg-green-50 text-green-700 hover:bg-green-100'

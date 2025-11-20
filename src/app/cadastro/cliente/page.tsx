@@ -144,7 +144,7 @@ export default function CadastroClientePage() {
         throw new Error('Erro ao criar usuário');
       }
 
-      // Criar perfil na tabela profiles
+      // Criar perfil na tabela profiles COM EMAIL
       const { error: profileError } = await supabase
         .from('profiles')
         .insert([
@@ -152,6 +152,7 @@ export default function CadastroClientePage() {
             user_id: authData.user.id,
             type: 'cliente',
             name: formData.name.trim(),
+            email: formData.email.toLowerCase(),
             cpf_cnpj: cleanCPF,
             phone: cleanPhone,
             address: '',
